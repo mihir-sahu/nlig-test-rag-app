@@ -1,0 +1,49 @@
+"""
+Configuration management for test-rag-app
+"""
+from pydantic_settings import BaseSettings
+from typing import List
+import os
+
+
+class Settings(BaseSettings):
+    """Application settings"""
+    
+    # Application
+    APP_NAME: str = "test-rag-app"
+    DEBUG: bool = False
+    
+    # LLM Configuration
+    LLM_PROVIDER: str = "openai"
+    LLM_MODEL: str = "gpt-4o-mini"
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    
+    # Vector Database
+    VECTOR_DB_TYPE: str = "chroma"
+    VECTOR_DB_PATH: str = os.getenv("VECTOR_DB_PATH", "./chroma_db")
+    COLLECTION_NAME: str = "test-rag-app_docs"
+    
+    # RAG Configuration
+    CHUNK_SIZE: int = 1000
+    CHUNK_OVERLAP: int = 200
+    TOP_K: int = 4
+    TEMPERATURE: float = 0.7
+    MAX_TOKENS: int = 1000
+    
+    # CORS
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000"
+    ]
+    
+    # Monitoring
+    ENABLE_MONITORING: bool = os.getenv("ENABLE_MONITORING", "true").lower() == "true"
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+
+settings = Settings()
