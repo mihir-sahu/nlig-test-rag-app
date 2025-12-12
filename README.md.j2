@@ -1,0 +1,159 @@
+# test-rag-app
+
+Production-ready RAG (Retrieval Augmented Generation) application built with LangChain, ChromaDB, and OpenAI.
+
+## 🚀 Features
+
+- **Document Ingestion**: Support for PDF, TXT, MD, DOCX files
+- **Vector Search**: Efficient similarity search with ChromaDB
+- **Context-Aware QA**: Generate answers based on retrieved context
+- **Streaming Responses**: Real-time streaming of LLM responses
+- **Monitoring**: Built-in OpenTelemetry instrumentation
+- **API-First**: RESTful API with FastAPI
+- **Docker Ready**: Containerized for easy deployment
+
+## 📋 Prerequisites
+
+- Python 3.11+
+- OpenAI API key (or use Ollama for local inference)
+
+## 🛠️ Installation
+
+1. **Install dependencies**:
+```bash
+pip install -r requirements.txt
+```
+
+2. **Configure environment**:
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+3. **Run the application**:
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+## 📚 Usage
+
+### 1. Ingest Documents
+
+Upload documents to build your knowledge base:
+
+```bash
+curl -X POST http://localhost:8000/ingest \
+  -F "file=@document.pdf"
+```
+
+### 2. Query the System
+
+Ask questions based on ingested documents:
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is the main topic of the documents?"}'
+```
+
+### 3. Streaming Queries
+
+Get real-time streaming responses:
+
+```bash
+curl -X POST http://localhost:8000/query/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Explain the key concepts"}'
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+- `OPENAI_API_KEY`: Your OpenAI API key
+- `LLM_MODEL`: Model to use (default: gpt-4o-mini)
+- `EMBEDDING_MODEL`: Embedding model (default: text-embedding-3-small)
+- `VECTOR_DB_PATH`: Path to ChromaDB storage
+- `CHUNK_SIZE`: Document chunk size (default: 1000)
+- `CHUNK_OVERLAP`: Overlap between chunks (default: 200)
+- `TOP_K`: Number of chunks to retrieve (default: 4)
+- `TEMPERATURE`: LLM temperature (default: 0.7)
+
+### Customization
+
+Edit `app/config.py` to customize:
+- Document loaders
+- Embedding models
+- Vector store configuration
+- LLM parameters
+
+## 📊 API Documentation
+
+Interactive API docs available at:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+## 🐳 Docker Deployment
+
+Build and run with Docker:
+
+```bash
+docker build -t test-rag-app .
+docker run -p 8000:8000 \
+  -e OPENAI_API_KEY=your_key \
+  test-rag-app
+```
+
+## 🧪 Testing
+
+Run tests:
+
+```bash
+pytest tests/ -v
+```
+
+## 📈 Monitoring
+
+The application includes OpenTelemetry instrumentation for:
+- Request tracing
+- Performance metrics
+- Error tracking
+
+Metrics endpoint: http://localhost:8000/metrics
+
+## 🏗️ Architecture
+
+```
+test-rag-app/
+├── app/
+│   ├── main.py           # FastAPI application
+│   ├── config.py         # Configuration management
+│   ├── ingest.py         # Document ingestion pipeline
+│   ├── retriever.py      # Vector search & retrieval
+│   ├── chain.py          # RAG chain implementation
+│   └── models.py         # Pydantic schemas
+├── data/                 # Sample documents
+├── tests/                # Unit tests
+├── requirements.txt
+├── Dockerfile
+└── .env.example
+```
+
+## 🔐 Security
+
+- API keys stored in environment variables
+- Input validation with Pydantic
+- Rate limiting enabled
+- CORS configured
+
+## 📝 License
+
+MIT License
+
+## 🤝 Contributing
+
+Contributions welcome! Please open an issue or submit a PR.
+
+## 📞 Support
+
+For issues or questions, contact: support@example.com
