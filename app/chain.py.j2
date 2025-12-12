@@ -1,0 +1,153 @@
+"""
+RAG chain implementation
+Combines retrieval and generation for question answering
+"""
+import logging
+import json
+from typing import Dict, Any, AsyncGenerator
+
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+
+from app.config import settings
+from app.retriever import retriever
+
+logger = logging.getLogger(__name__)
+
+# RAG prompt template
+RAG_PROMPT_TEMPLATE = """You are a helpful AI assistant. Use the following pieces of context to answer the question at the end.
+If you don't know the answer based on the context, just say that you don't know, don't try to make up an answer.
+Always cite the sources (document names) you used to answer the question.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer: """
+
+PROMPT = PromptTemplate(
+    template=RAG_PROMPT_TEMPLATE,
+    input_variables=["context", "question"]
+)
+
+
+async def rag_chain(query: str, top_k: int = None) -> Dict[str, Any]:
+    """
+    Execute RAG chain for a query
+    
+    Args:
+        query: User query
+        top_k: Number of context chunks to retrieve
+    
+    Returns:
+        Dict with answer, sources, and metadata
+    """
+    # Retrieve relevant documents
+    documents = await retriever.retrieve(query, top_k=top_k)
+    
+    if not documents:
+        return {
+            "answer": "I don't have any relevant information to answer this question. Please ingest some documents first.",
+            "sources": [],
+            "context_chunks": 0
+        }
+    
+    # Build context
+    context = "\n\n".join([
+        f"[Source: {doc['metadata'].get('source', 'unknown')}]\n{doc['content']}"
+        for doc in documents
+    ])
+    
+    # Initialize LLM
+    llm = ChatOpenAI(
+        model=settings.LLM_MODEL,
+        temperature=settings.TEMPERATURE,
+        max_tokens=settings.MAX_TOKENS,
+        openai_api_key=settings.OPENAI_API_KEY
+    )
+    
+    # Generate response
+    prompt_text = PROMPT.format(context=context, question=query)
+    response = await llm.ainvoke(prompt_text)
+    
+    # Extract sources
+    sources = list(set([
+        doc['metadata'].get('source', 'unknown')
+        for doc in documents
+    ]))
+    
+    return {
+        "answer": response.content,
+        "sources": sources,
+        "context_chunks": len(documents)
+    }
+
+
+async def rag_chain_stream(
+    query: str,
+    top_k: int = None
+) -> AsyncGenerator[str, None]:
+    """
+    Execute RAG chain with streaming response
+    
+    Args:
+        query: User query
+        top_k: Number of context chunks to retrieve
+    
+    Yields:
+        JSON chunks for streaming
+    """
+    # Retrieve relevant documents
+    documents = await retriever.retrieve(query, top_k=top_k)
+    
+    if not documents:
+        yield json.dumps({
+            "type": "answer",
+            "content": "I don't have any relevant information to answer this question."
+        })
+        return
+    
+    # Send sources first
+    sources = list(set([
+        doc['metadata'].get('source', 'unknown')
+        for doc in documents
+    ]))
+    
+    yield json.dumps({
+        "type": "sources",
+        "content": sources
+    })
+    
+    # Build context
+    context = "\n\n".join([
+        f"[Source: {doc['metadata'].get('source', 'unknown')}]\n{doc['content']}"
+        for doc in documents
+    ])
+    
+    # Initialize streaming LLM
+    llm = ChatOpenAI(
+        model=settings.LLM_MODEL,
+        temperature=settings.TEMPERATURE,
+        max_tokens=settings.MAX_TOKENS,
+        openai_api_key=settings.OPENAI_API_KEY,
+        streaming=True
+    )
+    
+    # Generate streaming response
+    prompt_text = PROMPT.format(context=context, question=query)
+    
+    async for chunk in llm.astream(prompt_text):
+        if chunk.content:
+            yield json.dumps({
+                "type": "answer_chunk",
+                "content": chunk.content
+            })
+    
+    # Send completion signal
+    yield json.dumps({
+        "type": "done",
+        "content": ""
+    })
