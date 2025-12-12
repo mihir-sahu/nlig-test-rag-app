@@ -1,0 +1,118 @@
+"""
+Document ingestion pipeline
+Handles document loading, chunking, and vector store indexing
+"""
+import logging
+from typing import Dict, Any
+from io import BytesIO
+import tempfile
+import os
+
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import (
+    PyPDFLoader,
+    TextLoader,
+    UnstructuredMarkdownLoader,
+)
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Initialize embeddings
+embeddings = OpenAIEmbeddings(
+    model=settings.EMBEDDING_MODEL,
+    openai_api_key=settings.OPENAI_API_KEY
+) if settings.OPENAI_API_KEY else None
+
+# Initialize vector store
+vector_store = Chroma(
+    collection_name=settings.COLLECTION_NAME,
+    embedding_function=embeddings,
+    persist_directory=settings.VECTOR_DB_PATH
+) if embeddings else None
+
+
+async def ingest_document(
+    content: bytes,
+    filename: str,
+    content_type: str
+) -> Dict[str, Any]:
+    """
+    Ingest a document into the vector database
+    
+    Args:
+        content: Document content as bytes
+        filename: Original filename
+        content_type: MIME type
+    
+    Returns:
+        Dict with ingestion results
+    """
+    if not vector_store:
+        raise ValueError("Vector store not initialized. Check OPENAI_API_KEY.")
+    
+    # Save to temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp_file:
+        tmp_file.write(content)
+        tmp_path = tmp_file.name
+    
+    try:
+        # Load document based on file type
+        documents = await load_document(tmp_path, content_type)
+        
+        # Split into chunks
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=settings.CHUNK_SIZE,
+            chunk_overlap=settings.CHUNK_OVERLAP,
+            length_function=len,
+        )
+        chunks = text_splitter.split_documents(documents)
+        
+        # Add metadata
+        for chunk in chunks:
+            chunk.metadata["source"] = filename
+        
+        # Add to vector store
+        vector_store.add_documents(chunks)
+        
+        logger.info(f"Ingested {len(chunks)} chunks from {filename}")
+        
+        return {
+            "filename": filename,
+            "chunks_created": len(chunks),
+            "status": "success"
+        }
+        
+    finally:
+        # Clean up temp file
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
+async def load_document(file_path: str, content_type: str):
+    """
+    Load document based on file type
+    
+    Supported formats: PDF, TXT, MD, DOCX
+    """
+    file_ext = os.path.splitext(file_path)[1].lower()
+    
+    if file_ext == '.pdf' or 'pdf' in content_type:
+        loader = PyPDFLoader(file_path)
+    elif file_ext in ['.txt', '.text']:
+        loader = TextLoader(file_path)
+    elif file_ext in ['.md', '.markdown']:
+        loader = UnstructuredMarkdownLoader(file_path)
+    else:
+        # Default to text loader
+        loader = TextLoader(file_path)
+    
+    return loader.load()
+
+
+def get_vector_store():
+    """Get vector store instance"""
+    return vector_store
